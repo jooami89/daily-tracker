@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>구스 일간 트래커</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f6f3;color:#1a1a1a;min-height:100vh;padding:1rem}
+h1{font-size:20px;font-weight:600;margin-bottom:4px}
+.sub{font-size:13px;color:#888;margin-bottom:1.5rem}
+.week-nav{display:flex;align-items:center;gap:12px;margin-bottom:1rem}
+.week-nav button{width:34px;height:34px;border-radius:8px;border:1px solid #ddd;background:#fff;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center}
+.week-nav button:hover{background:#f0f0f0}
+.week-title{font-size:16px;font-weight:600}
+.summary-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:1.5rem}
+.summary-card{background:#fff;border-radius:10px;padding:10px 8px;text-align:center;border:1px solid #eee}
+.summary-card .label{font-size:11px;color:#999;margin-bottom:4px}
+.summary-card .val{font-size:18px;font-weight:600;color:#1a1a1a}
+.summary-card .pct{font-size:10px;color:#aaa;margin-top:2px}
+.table-wrap{overflow-x:auto;background:#fff;border-radius:12px;border:1px solid #eee;margin-bottom:1.5rem}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:580px}
+th{padding:10px 8px;text-align:center;color:#999;font-weight:500;border-bottom:1px solid #f0f0f0;white-space:nowrap;font-size:12px}
+th.left{text-align:left;padding-left:16px}
+td{padding:8px 6px;text-align:center;border-bottom:1px solid #f7f7f7;vertical-align:middle}
+td.day-cell{text-align:left;padding-left:16px;white-space:nowrap}
+td.day-cell .daynum{font-weight:600;font-size:14px}
+td.day-cell .dayname{font-size:11px;color:#aaa;margin-left:3px}
+td.day-cell .allclear{font-size:10px;color:#22c55e;margin-left:4px}
+td.note-cell{text-align:left;padding-right:12px}
+.check-btn{width:30px;height:30px;border-radius:50%;border:1.5px solid #e0e0e0;background:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:16px;transition:all 0.15s}
+.check-btn.on{background:#dcfce7;border-color:#86efac}
+.check-btn.off{color:#ccc}
+.check-btn:disabled{opacity:0.35;cursor:default}
+.note-input{width:100%;background:none;border:none;border-bottom:1px solid transparent;font-size:12px;color:#333;padding:2px 4px;font-family:inherit}
+.note-input:focus{outline:none;border-bottom:1px solid #ccc}
+.note-input::placeholder{color:#ccc}
+.weight-input{width:54px;background:none;border:none;border-bottom:1px solid #e0e0e0;font-size:12px;color:#333;text-align:center;padding:2px;font-family:inherit}
+.weight-input:focus{outline:none;border-bottom:1px solid #999}
+.weight-input:disabled{opacity:0.4}
+.today-row{background:#eff6ff}
+.total-row td{font-weight:600;font-size:12px;color:#888;border-top:1px solid #eee;border-bottom:none;padding-top:10px;padding-bottom:10px}
+.streak{display:inline-block;background:#dcfce7;color:#16a34a;font-size:12px;padding:4px 12px;border-radius:20px;font-weight:500}
+.header-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem}
+@media(max-width:480px){
+  body{padding:0.75rem}
+  .summary-grid{grid-template-columns:repeat(5,1fr);gap:5px}
+  .summary-card{padding:8px 4px}
+  .summary-card .val{font-size:16px}
+  .summary-card .label{font-size:10px}
+}
+</style>
+</head>
+<body>
+
+<div class="header-row">
+  <div>
+    <h1>🪿 구스 트래커</h1>
+    <p class="sub">나를 위한 3대 원칙 + 냥이를 위한 2대 원칙</p>
+  </div>
+  <span class="streak" id="streak-badge" style="display:none"></span>
+</div>
+
+<div class="week-nav">
+  <button onclick="changeWeek(-1)">&#8249;</button>
+  <span class="week-title" id="week-label"></span>
+  <button onclick="changeWeek(1)">&#8250;</button>
+</div>
+
+<div class="summary-grid" id="summary-grid"></div>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+  <th class="left">날짜</th>
+  <th>🥗<br>식단</th>
+  <th>💪<br>운동</th>
+  <th>🍵<br>금주</th>
+  <th>🐱<br>고똥</th>
+  <th>🌿<br>보리수액</th>
+  <th>몸무게<br>(kg)</th>
+  <th class="left">한줄평</th>
+</tr>
+</thead>
+<tbody id="tbody"></tbody>
+<tfoot id="tfoot"></tfoot>
+</table>
+</div>
+
+<script>
+const CATS=['식단','운동','금주','고똥','보리수액'];
+const MAXES=[7,4,7,7,7];
+const DAYS=['일','월','화','수','목','금','토'];
+const PRESET={
+  '2025-06-08':{checks:[true,true,true,true,true],weight:'',note:'첫날 올클리어! 단백질 살짝부족'},
+  '2025-06-09':{checks:[false,false,false,false,false],weight:'',note:'완탕면 면조절 완료! 저녁운동 고비격파?'},
+  '2025-06-10':{checks:[false,false,false,false,false],weight:'',note:'아침PT, 생선조림 먹는 날'},
+  '2025-06-12':{checks:[false,false,false,false,false],weight:'',note:'금요 고비! 퇴근 후 와인 유혹 넘기기'},
+  '2025-06-13':{checks:[false,false,false,false,false],weight:'',note:'주말 루틴 유지'},
+};
+
+let data={};
+let weekStart=null;
+
+function getMonday(d){
+  const dt=new Date(d);dt.setHours(0,0,0,0);
+  const day=dt.getDay();
+  dt.setDate(dt.getDate()+(day===0?-6:1-day));
+  return dt;
+}
+function dateKey(d){return d.toISOString().slice(0,10)}
+function getWeekDates(mon){return Array.from({length:7},(_,i)=>{const d=new Date(mon);d.setDate(d.getDate()+i);return d;})}
+function getWeekLabel(mon){
+  const m=mon.getMonth()+1;
+  const w=Math.ceil((mon.getDate()+new Date(mon.getFullYear(),mon.getMonth(),1).getDay())/7);
+  return `${m}월 ${w}주차`;
+}
+
+function loadData(){
+  try{const s=localStorage.getItem('goose_tracker_v2');if(s)data=JSON.parse(s);}catch(e){}
+  Object.entries(PRESET).forEach(([k,v])=>{if(!data[k])data[k]=JSON.parse(JSON.stringify(v));});
+}
+function saveData(){try{localStorage.setItem('goose_tracker_v2',JSON.stringify(data));}catch(e){}}
+
+function render(){
+  const dates=getWeekDates(weekStart);
+  const today=new Date();today.setHours(0,0,0,0);
+  document.getElementById('week-label').textContent=getWeekLabel(weekStart);
+
+  const totals=CATS.map(()=>0);
+  const tbody=document.getElementById('tbody');
+  tbody.innerHTML='';
+
+  dates.forEach(date=>{
+    const key=dateKey(date);
+    if(!data[key])data[key]={checks:CATS.map(()=>false),weight:'',note:''};
+    const row=data[key];
+    const isToday=date.getTime()===today.getTime();
+    const isFuture=date>today;
+    const allDone=!isFuture&&row.checks.every(Boolean);
+
+    const tr=document.createElement('tr');
+    if(isToday)tr.className='today-row';
+
+    const dayTd=document.createElement('td');
+    dayTd.className='day-cell';
+    dayTd.innerHTML=`<span class="daynum">${date.getDate()}일</span><span class="dayname">(${DAYS[date.getDay()]})</span>${allDone?'<span class="allclear">✓올클</span>':''}`;
+    tr.appendChild(dayTd);
+
+    CATS.forEach((cat,ci)=>{
+      const checked=row.checks[ci];
+      if(checked)totals[ci]++;
+      const td=document.createElement('td');
+      const btn=document.createElement('button');
+      btn.className='check-btn '+(checked?'on':'off');
+      btn.innerHTML=checked?'✓':'○';
+      btn.disabled=isFuture;
+      btn.onclick=()=>{data[key].checks[ci]=!data[key].checks[ci];saveData();render();};
+      td.appendChild(btn);tr.appendChild(td);
+    });
+
+    const wTd=document.createElement('td');
+    const wIn=document.createElement('input');
+    wIn.type='number';wIn.className='weight-input';wIn.placeholder='--';
+    wIn.value=row.weight||'';wIn.disabled=isFuture;
+    wIn.onchange=e=>{data[key].weight=e.target.value;saveData();};
+    wTd.appendChild(wIn);tr.appendChild(wTd);
+
+    const nTd=document.createElement('td');nTd.className='note-cell';
+    const nIn=document.createElement('input');
+    nIn.type='text';nIn.className='note-input';nIn.placeholder='오늘 한줄평...';
+    nIn.value=row.note||'';nIn.disabled=isFuture;
+    nIn.onchange=e=>{data[key].note=e.target.value;saveData();};
+    nTd.appendChild(nIn);tr.appendChild(nTd);
+
+    tbody.appendChild(tr);
+  });
+
+  const tfoot=document.getElementById('tfoot');
+  tfoot.innerHTML='';
+  const tr2=document.createElement('tr');tr2.className='total-row';
+  tr2.innerHTML='<td style="padding-left:16px">주간 합계</td>';
+  CATS.forEach((c,i)=>{
+    const v=totals[i];const m=MAXES[i];
+    const col=v>=m?'#16a34a':v>=m*0.6?'#d97706':'#dc2626';
+    tr2.innerHTML+=`<td style="color:${col}">${v}/${m}</td>`;
+  });
+  tr2.innerHTML+='<td colspan="2"></td>';
+  tfoot.appendChild(tr2);
+
+  const grid=document.getElementById('summary-grid');grid.innerHTML='';
+  CATS.forEach((l,i)=>{
+    const v=totals[i];const m=MAXES[i];
+    const card=document.createElement('div');card.className='summary-card';
+    card.innerHTML=`<div class="label">${l}</div><div class="val">${v}<span style="font-size:11px;color:#aaa">/${m}</span></div><div class="pct">${Math.round(v/m*100)}%</div>`;
+    grid.appendChild(card);
+  });
+
+  const clearDays=dates.filter(d=>d<=today&&data[dateKey(d)]&&data[dateKey(d)].checks.every(Boolean)).length;
+  const badge=document.getElementById('streak-badge');
+  if(clearDays>0){badge.style.display='inline-block';badge.textContent=`올클리어 ${clearDays}일 🎉`;}
+  else badge.style.display='none';
+}
+
+function changeWeek(dir){weekStart.setDate(weekStart.getDate()+dir*7);render();}
+
+loadData();
+weekStart=getMonday(new Date());
+render();
+</script>
+</body>
+</html>
